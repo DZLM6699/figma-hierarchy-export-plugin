@@ -11,7 +11,7 @@ interface ImageInfo {
 
 type NamingStrategy = 'suffix' | 'id' | 'merge';
 
-function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeIds: string[] = [], parentOriginalNames: string[] = []): ImageInfo[] {
+function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeIds: string[] = [], parentOriginalNames: string[] = [], includeRoot: boolean = false): ImageInfo[] {
   const images: ImageInfo[] = [];
   
   if (node.type === 'RECTANGLE' || node.type === 'ELLIPSE' || node.type === 'POLYGON' || node.type === 'STAR' || node.type === 'VECTOR') {
@@ -32,11 +32,19 @@ function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeId
   }
   
   if ("children" in node) {
-    const currentPath = parentPath ? `${parentPath}/${sanitizeName(node.name)}` : sanitizeName(node.name);
-    const currentNodeIds = [...parentNodeIds, node.id];
-    const currentOriginalNames = [...parentOriginalNames, node.name];
+    // 只有在includeRoot为true或者不是第一层时才包含当前节点名称
+    const currentPath = (includeRoot || parentPath !== "") ? 
+      (parentPath ? `${parentPath}/${sanitizeName(node.name)}` : sanitizeName(node.name)) : 
+      parentPath;
+    const currentNodeIds = (includeRoot || parentNodeIds.length > 0) ? 
+      [...parentNodeIds, node.id] : 
+      parentNodeIds;
+    const currentOriginalNames = (includeRoot || parentOriginalNames.length > 0) ? 
+      [...parentOriginalNames, node.name] : 
+      parentOriginalNames;
+    
     for (const child of node.children) {
-      images.push(...collectImageNodes(child, currentPath, currentNodeIds, currentOriginalNames));
+      images.push(...collectImageNodes(child, currentPath, currentNodeIds, currentOriginalNames, true));
     }
   }
   
@@ -160,8 +168,10 @@ figma.ui.onmessage = async (msg) => {
         return;
       }
       
-      const selectedNode = selection[0];
-      imageNodes = collectImageNodes(selectedNode);
+      // 处理所有选中的节点
+      for (const selectedNode of selection) {
+        imageNodes.push(...collectImageNodes(selectedNode));
+      }
     }
     
     if (imageNodes.length === 0) {
