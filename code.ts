@@ -138,24 +138,34 @@ async function exportImageNode(node: BaseNode, processedPath: string, imageName:
 
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'export-hierarchy') {
-    const selection = figma.currentPage.selection;
     const namingStrategy = msg.namingStrategy as NamingStrategy || 'suffix';
+    const exportAll = msg.exportAll || false;
     
-    if (selection.length === 0) {
-      figma.ui.postMessage({
-        type: 'error',
-        message: '请先选择一个节点'
-      });
-      return;
+    let imageNodes: ImageInfo[] = [];
+    
+    if (exportAll) {
+      // 导出当前页面的所有图片
+      imageNodes = collectImageNodes(figma.currentPage);
+    } else {
+      // 导出选中节点的图片
+      const selection = figma.currentPage.selection;
+      
+      if (selection.length === 0) {
+        figma.ui.postMessage({
+          type: 'error',
+          message: '请先选择一个节点，或勾选"导出当前页面的所有图片"'
+        });
+        return;
+      }
+      
+      const selectedNode = selection[0];
+      imageNodes = collectImageNodes(selectedNode);
     }
-    
-    const selectedNode = selection[0];
-    const imageNodes = collectImageNodes(selectedNode);
     
     if (imageNodes.length === 0) {
       figma.ui.postMessage({
         type: 'error',
-        message: '选中的节点中没有找到图片资源'
+        message: exportAll ? '当前页面中没有找到图片资源' : '选中的节点中没有找到图片资源'
       });
       return;
     }
