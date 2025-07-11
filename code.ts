@@ -116,6 +116,9 @@ function collectImageNodesFromParent(parent: BaseNode, selectedNodes: readonly S
     // 只处理应该包含的节点
     if (!shouldIncludeNode(node)) return;
     
+    // 检查当前节点是否是选中的节点之一
+    const isSelectedNode = selectedNodeIds.has(node.id);
+    
     if (node.type === 'RECTANGLE' || node.type === 'ELLIPSE' || node.type === 'POLYGON' || node.type === 'STAR' || node.type === 'VECTOR') {
       const rectNode = node as GeometryMixin;
       if (rectNode.fills && rectNode.fills !== figma.mixed && rectNode.fills.length > 0) {
@@ -134,13 +137,15 @@ function collectImageNodesFromParent(parent: BaseNode, selectedNodes: readonly S
     }
     
     if ("children" in node) {
-      const currentPath = includeInPath && node !== parent ? 
+      // 如果是选中的节点或者不是父节点，包含在路径中
+      const shouldAddToPath = includeInPath && (node !== parent || isSelectedNode);
+      const currentPath = shouldAddToPath ? 
         (path ? `${path}/${sanitizeName(node.name)}` : sanitizeName(node.name)) : 
         path;
-      const currentNodeIds = includeInPath && node !== parent ? 
+      const currentNodeIds = shouldAddToPath ? 
         [...nodeIds, node.id] : 
         nodeIds;
-      const currentOriginalNames = includeInPath && node !== parent ? 
+      const currentOriginalNames = shouldAddToPath ? 
         [...originalNames, node.name] : 
         originalNames;
       
