@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      font-size: 20px;
+      margin: 0 0 20px 0;
+      color: #333;
+    }
+    
+    .info {
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .option-group {
+      margin-bottom: 20px;
+    }
+    
+    .option-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    .option-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .option-group select:focus {
+      outline: none;
+      border-color: #18a0fb;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .primary {
+      background: #18a0fb;
+      color: white;
+    }
+    
+    .primary:hover {
+      background: #0d90ea;
+    }
+    
+    .primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .secondary {
+      background: #e5e5e5;
+      color: #333;
+    }
+    
+    .secondary:hover {
+      background: #d5d5d5;
+    }
+    
+    .progress {
+      display: none;
+      margin-top: 20px;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #e5e5e5;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: #18a0fb;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    
+    .progress-text {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+    }
+    
+    .error {
+      color: #ff0000;
+      font-size: 14px;
+      margin-top: 10px;
+      display: none;
+    }
+    
+    .success {
+      color: #00a000;
+      font-size: 14px;
+      margin-top: 10px;
+      display: none;
+    }
+    
+    .export-info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f8f8;
+      border-radius: 6px;
+      display: none;
+    }
+    
+    .export-info h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #333;
+    }
+    
+    .export-list {
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .export-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>图片资源导出工具</h1>
+    
+    <div class="info">
+      <strong>使用说明：</strong><br>
+      1. 在Figma中选择包含图片的节点<br>
+      2. 选择同名文件处理方式<br>
+      3. 点击"开始导出"按钮<br>
+      4. 插件将只导出其中的图片资源（IMAGE类型）
+    </div>
+    
+    <div class="option-group">
+      <label for="namingStrategy">同名文件处理方式：</label>
+      <select id="namingStrategy">
+        <option value="suffix">自动添加后缀 (_1, _2...)</option>
+        <option value="id">使用节点ID命名</option>
+        <option value="merge">合并到同一文件夹</option>
+      </select>
+    </div>
+    
+    <div class="button-group">
+      <button id="exportBtn" class="primary">开始导出</button>
+      <button id="cancelBtn" class="secondary">取消</button>
+    </div>
+    
+    <div class="progress" id="progress">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text" id="progressText">正在导出...</div>
+    </div>
+    
+    <div class="error" id="error"></div>
+    <div class="success" id="success"></div>
+    
+    <div class="export-info" id="exportInfo">
+      <h3>导出完成</h3>
+      <div class="export-list" id="exportList"></div>
+    </div>
+  </div>
+  
+  <script>
+    const exportBtn = document.getElementById('exportBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const progress = document.getElementById('progress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const error = document.getElementById('error');
+    const success = document.getElementById('success');
+    const exportInfo = document.getElementById('exportInfo');
+    const exportList = document.getElementById('exportList');
+    
+    let isExporting = false;
+    
+    exportBtn.addEventListener('click', () => {
+      if (!isExporting) {
+        isExporting = true;
+        exportBtn.disabled = true;
+        error.style.display = 'none';
+        success.style.display = 'none';
+        exportInfo.style.display = 'none';
+        
+        const namingStrategy = document.getElementById('namingStrategy').value;
+        
+        parent.postMessage({ 
+          pluginMessage: { 
+            type: 'export-hierarchy',
+            namingStrategy: namingStrategy
+          } 
+        }, '*');
+      }
+    });
+    
+    cancelBtn.addEventListener('click', () => {
+      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
+    });
+    
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'error') {
+        error.textContent = msg.message;
+        error.style.display = 'block';
+        exportBtn.disabled = false;
+        isExporting = false;
+      }
+      
+      if (msg.type === 'export-start') {
+        progress.style.display = 'block';
+        progressText.textContent = `正在导出 0/${msg.total} 个节点...`;
+      }
+      
+      if (msg.type === 'export-progress') {
+        const percentage = (msg.completed / msg.total) * 100;
+        progressFill.style.width = percentage + '%';
+        progressText.textContent = `正在导出 ${msg.completed}/${msg.total} 个节点...`;
+      }
+      
+      if (msg.type === 'export-complete') {
+        progress.style.display = 'none';
+        exportBtn.disabled = false;
+        isExporting = false;
+        
+        if (msg.exports.length > 0) {
+          success.textContent = `成功导出 ${msg.exports.length} 个文件`;
+          success.style.display = 'block';
+          
+          exportList.innerHTML = '';
+          msg.exports.forEach(exp => {
+            const item = document.createElement('div');
+            item.className = 'export-item';
+            item.textContent = exp.name;
+            exportList.appendChild(item);
+          });
+          
+          exportInfo.style.display = 'block';
+          
+          downloadExports(msg.exports);
+        } else {
+          error.textContent = '没有可导出的节点';
+          error.style.display = 'block';
+        }
+      }
+    };
+    
+    function downloadExports(exports) {
+      const zip = new JSZip();
+      
+      exports.forEach(exp => {
+        zip.file(exp.name, exp.bytes);
+      });
+      
+      zip.generateAsync({ type: 'blob' }).then(content => {
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'figma-hierarchy-export.zip';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</body>
+</html>
