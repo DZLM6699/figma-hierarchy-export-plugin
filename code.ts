@@ -55,6 +55,105 @@ function sanitizeName(name: string): string {
   return name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').trim();
 }
 
+function findCommonParent(nodes: readonly SceneNode[]): BaseNode | null {
+  if (nodes.length === 0) return null;
+  
+  // 获取第一个节点的所有父节点
+  let current = nodes[0].parent;
+  const parents: BaseNode[] = [];
+  while (current) {
+    parents.push(current);
+    current = current.parent;
+  }
+  
+  // 找到所有节点都共享的最近父节点
+  for (const parent of parents) {
+    let allNodesInParent = true;
+    for (const node of nodes) {
+      let nodeParent = node.parent;
+      let found = false;
+      while (nodeParent) {
+        if (nodeParent === parent) {
+          found = true;
+          break;
+        }
+        nodeParent = nodeParent.parent;
+      }
+      if (!found) {
+        allNodesInParent = false;
+        break;
+      }
+    }
+    if (allNodesInParent) {
+      return parent;
+    }
+  }
+  
+  return null;
+}
+
+function collectImageNodesFromParent(parent: BaseNode, selectedNodes: readonly SceneNode[], parentPath: string = "", parentNodeIds: string[] = [], parentOriginalNames: string[] = []): ImageInfo[] {
+  const images: ImageInfo[] = [];
+  const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+  
+  function shouldIncludeNode(node: BaseNode): boolean {
+    // 检查节点是否是选中节点或其子节点
+    if (selectedNodeIds.has(node.id)) return true;
+    
+    // 检查是否是选中节点的子节点
+    for (const selected of selectedNodes) {
+      let current: BaseNode | null = node;
+      while (current) {
+        if (current.id === selected.id) return true;
+        current = current.parent;
+      }
+    }
+    
+    return false;
+  }
+  
+  function collectFromNode(node: BaseNode, path: string, nodeIds: string[], originalNames: string[], includeInPath: boolean = true): void {
+    // 只处理应该包含的节点
+    if (!shouldIncludeNode(node)) return;
+    
+    if (node.type === 'RECTANGLE' || node.type === 'ELLIPSE' || node.type === 'POLYGON' || node.type === 'STAR' || node.type === 'VECTOR') {
+      const rectNode = node as GeometryMixin;
+      if (rectNode.fills && rectNode.fills !== figma.mixed && rectNode.fills.length > 0) {
+        const fill = rectNode.fills[0];
+        if (fill.type === 'IMAGE') {
+          images.push({
+            id: node.id,
+            name: node.name,
+            path: path,
+            nodeId: node.id,
+            parentNodeIds: [...nodeIds],
+            parentOriginalNames: [...originalNames]
+          });
+        }
+      }
+    }
+    
+    if ("children" in node) {
+      const currentPath = includeInPath && node !== parent ? 
+        (path ? `${path}/${sanitizeName(node.name)}` : sanitizeName(node.name)) : 
+        path;
+      const currentNodeIds = includeInPath && node !== parent ? 
+        [...nodeIds, node.id] : 
+        nodeIds;
+      const currentOriginalNames = includeInPath && node !== parent ? 
+        [...originalNames, node.name] : 
+        originalNames;
+      
+      for (const child of node.children) {
+        collectFromNode(child, currentPath, currentNodeIds, currentOriginalNames);
+      }
+    }
+  }
+  
+  collectFromNode(parent, parentPath, parentNodeIds, parentOriginalNames, false);
+  return images;
+}
+
 function processExports(imageNodes: ImageInfo[], strategy: NamingStrategy): { processedPath: string; imageName: string; imageInfo: ImageInfo }[] {
   const result: { processedPath: string; imageName: string; imageInfo: ImageInfo }[] = [];
   
@@ -168,9 +267,21 @@ figma.ui.onmessage = async (msg) => {
         return;
       }
       
-      // 处理所有选中的节点
-      for (const selectedNode of selection) {
-        imageNodes.push(...collectImageNodes(selectedNode));
+      // 如果只选择了一个节点，直接处理
+      if (selection.length === 1) {
+        imageNodes = collectImageNodes(selection[0]);
+      } else {
+        // 如果选择了多个节点，找到它们的共同父节点
+        const commonParent = findCommonParent(selection);
+        if (commonParent) {
+          // 从共同父节点开始收集，但只包含选中的节点
+          imageNodes = collectImageNodesFromParent(commonParent, selection);
+        } else {
+          // 如果没有共同父节点，分别处理每个节点
+          for (const selectedNode of selection) {
+            imageNodes.push(...collectImageNodes(selectedNode));
+          }
+        }
       }
     }
     
