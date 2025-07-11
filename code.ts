@@ -274,7 +274,7 @@ figma.ui.onmessage = async (msg) => {
       
       // 如果只选择了一个节点，直接处理
       if (selection.length === 1) {
-        imageNodes = collectImageNodes(selection[0]);
+        imageNodes = collectImageNodes(selection[0], "", [], [], true);
       } else {
         // 如果选择了多个节点，找到它们的共同父节点
         const commonParent = findCommonParent(selection);
