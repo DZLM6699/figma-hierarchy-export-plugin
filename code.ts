@@ -32,14 +32,15 @@ function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeId
   }
   
   if ("children" in node) {
-    // 只有在includeRoot为true或者不是第一层时才包含当前节点名称
-    const currentPath = (includeRoot || parentPath !== "") ? 
+    // 第一次调用时includeRoot决定是否包含根节点，之后都应该包含
+    const shouldInclude = includeRoot || parentPath !== "";
+    const currentPath = shouldInclude ? 
       (parentPath ? `${parentPath}/${sanitizeName(node.name)}` : sanitizeName(node.name)) : 
       parentPath;
-    const currentNodeIds = (includeRoot || parentNodeIds.length > 0) ? 
+    const currentNodeIds = shouldInclude ? 
       [...parentNodeIds, node.id] : 
       parentNodeIds;
-    const currentOriginalNames = (includeRoot || parentOriginalNames.length > 0) ? 
+    const currentOriginalNames = shouldInclude ? 
       [...parentOriginalNames, node.name] : 
       parentOriginalNames;
     
@@ -171,33 +172,65 @@ function processExports(imageNodes: ImageInfo[], strategy: NamingStrategy): { pr
       result.push({ processedPath, imageName, imageInfo });
     }
   } else if (strategy === 'suffix') {
-    // 自动添加后缀策略 - 基于原始名称检查同名
-    const pathCounts = new Map<string, Map<string, number>>();
-    const nameCounts = new Map<string, number>();
+    // 自动添加后缀策略
+    // 先构建路径结构树，统计每个路径
+    const pathTree = new Map<string, Set<string>>();
+    
+    // 第一遍：收集所有路径信息
+    for (const imageInfo of imageNodes) {
+      const pathParts = imageInfo.path.split('/').filter(p => p.length > 0);
+      let currentPath = '';
+      
+      for (let i = 0; i < pathParts.length; i++) {
+        const parentPath = currentPath;
+        const part = pathParts[i];
+        
+        if (!pathTree.has(parentPath)) {
+          pathTree.set(parentPath, new Set());
+        }
+        pathTree.get(parentPath)!.add(part);
+        
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+      }
+    }
+    
+    // 第二遍：处理同名并生成最终路径
+    const pathMapping = new Map<string, string>();
+    const processedPaths = new Map<string, Map<string, number>>();
     
     for (const imageInfo of imageNodes) {
       const originalNames = imageInfo.parentOriginalNames || [];
       const pathParts = imageInfo.path.split('/').filter(p => p.length > 0);
       const processedParts: string[] = [];
-      let parentPath = '';
+      let currentOriginalPath = '';
+      let currentProcessedPath = '';
       
       for (let i = 0; i < pathParts.length; i++) {
-        const sanitizedPart = pathParts[i];
-        const originalName = originalNames[i] || sanitizedPart;
+        const part = pathParts[i];
+        const originalName = originalNames[i] || part;
+        currentOriginalPath = currentOriginalPath ? `${currentOriginalPath}/${part}` : part;
         
-        // 获取或创建当前层级的计数器
-        if (!pathCounts.has(parentPath)) {
-          pathCounts.set(parentPath, new Map<string, number>());
+        // 检查是否已经处理过这个路径
+        if (pathMapping.has(currentOriginalPath)) {
+          const processed = pathMapping.get(currentOriginalPath)!;
+          processedParts.push(processed.split('/').pop()!);
+        } else {
+          // 获取或创建父路径的计数器
+          if (!processedPaths.has(currentProcessedPath)) {
+            processedPaths.set(currentProcessedPath, new Map<string, number>());
+          }
+          const levelCounts = processedPaths.get(currentProcessedPath)!;
+          
+          // 计算后缀
+          const count = levelCounts.get(originalName) || 0;
+          const processedPart = count > 0 ? `${part}_${count}` : part;
+          levelCounts.set(originalName, count + 1);
+          
+          processedParts.push(processedPart);
+          pathMapping.set(currentOriginalPath, currentProcessedPath ? `${currentProcessedPath}/${processedPart}` : processedPart);
         }
-        const levelCounts = pathCounts.get(parentPath)!;
         
-        // 使用原始名称检查同名
-        const count = levelCounts.get(originalName) || 0;
-        const processedPart = count > 0 ? `${sanitizedPart}_${count}` : sanitizedPart;
-        levelCounts.set(originalName, count + 1);
-        
-        processedParts.push(processedPart);
-        parentPath = i < originalNames.length - 1 ? originalNames.slice(0, i + 1).join('/') : processedParts.join('/');
+        currentProcessedPath = processedParts.join('/');
       }
       
       const processedPath = processedParts.join('/');
