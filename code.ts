@@ -6,11 +6,12 @@ interface ImageInfo {
   path: string;
   nodeId: string;
   parentNodeIds: string[];
+  parentOriginalNames?: string[];
 }
 
 type NamingStrategy = 'suffix' | 'id' | 'merge';
 
-function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeIds: string[] = []): ImageInfo[] {
+function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeIds: string[] = [], parentOriginalNames: string[] = []): ImageInfo[] {
   const images: ImageInfo[] = [];
   
   if (node.type === 'RECTANGLE' || node.type === 'ELLIPSE' || node.type === 'POLYGON' || node.type === 'STAR' || node.type === 'VECTOR') {
@@ -23,7 +24,8 @@ function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeId
           name: node.name,
           path: parentPath,
           nodeId: node.id,
-          parentNodeIds: [...parentNodeIds]
+          parentNodeIds: [...parentNodeIds],
+          parentOriginalNames: [...parentOriginalNames]
         });
       }
     }
@@ -32,8 +34,9 @@ function collectImageNodes(node: BaseNode, parentPath: string = "", parentNodeId
   if ("children" in node) {
     const currentPath = parentPath ? `${parentPath}/${sanitizeName(node.name)}` : sanitizeName(node.name);
     const currentNodeIds = [...parentNodeIds, node.id];
+    const currentOriginalNames = [...parentOriginalNames, node.name];
     for (const child of node.children) {
-      images.push(...collectImageNodes(child, currentPath, currentNodeIds));
+      images.push(...collectImageNodes(child, currentPath, currentNodeIds, currentOriginalNames));
     }
   }
   
@@ -56,20 +59,19 @@ function processExports(imageNodes: ImageInfo[], strategy: NamingStrategy): { pr
       result.push({ processedPath, imageName, imageInfo });
     }
   } else if (strategy === 'suffix') {
-    // 自动添加后缀策略
+    // 自动添加后缀策略 - 基于原始名称检查同名
     const pathCounts = new Map<string, Map<string, number>>();
     const nameCounts = new Map<string, number>();
     
     for (const imageInfo of imageNodes) {
-      let processedPath = imageInfo.path;
-      
-      // 处理路径中的每个部分，检查是否需要添加后缀
-      const pathParts = processedPath.split('/').filter(p => p.length > 0);
+      const originalNames = imageInfo.parentOriginalNames || [];
+      const pathParts = imageInfo.path.split('/').filter(p => p.length > 0);
       const processedParts: string[] = [];
       let parentPath = '';
       
       for (let i = 0; i < pathParts.length; i++) {
-        const part = pathParts[i];
+        const sanitizedPart = pathParts[i];
+        const originalName = originalNames[i] || sanitizedPart;
         
         // 获取或创建当前层级的计数器
         if (!pathCounts.has(parentPath)) {
@@ -77,16 +79,16 @@ function processExports(imageNodes: ImageInfo[], strategy: NamingStrategy): { pr
         }
         const levelCounts = pathCounts.get(parentPath)!;
         
-        // 检查同级是否有同名文件夹
-        const count = levelCounts.get(part) || 0;
-        const processedPart = count > 0 ? `${part}_${count}` : part;
-        levelCounts.set(part, count + 1);
+        // 使用原始名称检查同名
+        const count = levelCounts.get(originalName) || 0;
+        const processedPart = count > 0 ? `${sanitizedPart}_${count}` : sanitizedPart;
+        levelCounts.set(originalName, count + 1);
         
         processedParts.push(processedPart);
-        parentPath = processedParts.join('/');
+        parentPath = i < originalNames.length - 1 ? originalNames.slice(0, i + 1).join('/') : processedParts.join('/');
       }
       
-      processedPath = processedParts.join('/');
+      const processedPath = processedParts.join('/');
       
       // 处理图片名称
       const nameKey = `${processedPath}/${imageInfo.name}`;
